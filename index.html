@@ -605,7 +605,7 @@ body{border-top:10px solid var(--accent);transition:border-color .25s}
       <ul>
         <li>保存できないと出たら、読取は止まります。画面の「再保存」か「Excelで退避」を押してください。</li>
         <li>同じQRが二重に数えられるときは、カメラの「高速連続モード」のチェックを外します。</li>
-        <li>読み取れた数と画面の数が合わないときは、設定の「CSV出力」で内容を確認します。</li>
+        <li>読み取れた数と画面の数が合わないときは、設定の「CSV出力」で内容を確認します。未処置NGがあるとCSVも出せません。先にNGを処置します。</li>
       </ul>
     </fieldset>
     <fieldset class="soundSettings">
@@ -671,6 +671,7 @@ body{border-top:10px solid var(--accent);transition:border-color .25s}
       <button id="bCsv">CSV出力</button>
       <button id="bClear" class="danger">読取データをクリア</button>
     </div>
+    <p class="note" id="csvBlockNote" style="color:#c62828;font-weight:bold" hidden></p>
     <div class="files" id="files"></div>
   </details>
 </main>
@@ -10988,7 +10989,7 @@ function findAlignmentPattern(matrix, alignmentPatternQuads, topRight, topLeft, 
 </script>
 <script>
 "use strict";
-const VER = "2026-11-25n";
+const VER = "2026-11-25o";
 const LS_KEY = "hinban_pile_v2";
 const MAX_BLOCKS = 15;
 
@@ -11321,6 +11322,12 @@ function evalPartToken(token, tail, raw){
   return first;
 }
 const REV_TAIL = /^\d*-[A-Z]{1,2}$/;       // 品番の後ろに離れて読まれる枝記号（例：1-A）
+/* 客先QR（かんばんではないQR）：実データで「,,,」「j」「g」だけの中身だった。
+   数字を含まず、カンマ・空白を除くと英字2文字以下のものを客先QRとみなす（NGのまま理由を分かりやすく出す）。 */
+function isCustomerQR(qr){
+  const bare = String(qr ?? "").replace(/[\s,]/g, "");
+  return /^[A-Z]{0,2}$/i.test(bare);
+}
 function extractQR(raw){
   const qr = normalizePartDashes(norm(String(raw ?? "").replace(/[①-⑳㉑-㉟]/g," ")));
   const found = new Map(), tokens = [...qr.matchAll(/[A-Z0-9]+(?:-[A-Z0-9]+)+/g)];
@@ -11336,6 +11343,8 @@ function extractQR(raw){
     if(r) found.set(r.extracted, r);
   });
   if(found.size === 1) return found.values().next().value;
+  if(!found.size && isCustomerQR(qr)) return {ok:false, matchedKey:"客先QR", extracted:"",
+    reason:"客先QR（品番なし）：かんばんのQRを読み直してください", qty:0};
   return {ok:false,matchedKey:[...found.keys()].join(" / ") || "品番不明",
     reason:found.size ? "品番候補が複数あります" : "品番を抽出できません"};
 }
@@ -11450,7 +11459,11 @@ function render(){
   updateUndo();
   renderReportGate(t, shipment);                        // 対象便の表示と、未処置NGによる出力停止（ポカヨケ）
   renderNowBar(t); renderNgAndon(t); renderRescanBar();
-  $("bCsv").disabled = !!scanHold;
+  const csvWhy = reportBlockReason(state.bin);
+  $("bCsv").disabled = !!scanHold || !!csvWhy;
+  $("bCsv").title = csvWhy;
+  $("csvBlockNote").hidden = !csvWhy;
+  $("csvBlockNote").textContent = csvWhy ? "⛔ CSV出力：" + csvWhy : "";
   $("exportNote").textContent = shipment === 0 ? "選択中の便に出荷数がありません。" :
     "読み取り日 " + readDate + (ngInScope ? "　／　NG " + ngInScope + "件（未処置 " + untreatedNg(state.bin, t.history).length + "件）。NGは数量に入っていません。" : "");
 
@@ -12055,7 +12068,7 @@ $("bUndo").addEventListener("click", undoLast);
    処置の記録（disp）は読取記録に入れて保存する。処置の記録がない既存のNGは未処置として扱う。
    ====================================================================== */
 let rescanTarget = null;                                  // 再読取で処置するNG（次の同じ便のOKをひも付ける）
-const EXCLUDE_REASONS = ["二重に読んだ（同じ箱）","出荷しない箱（別保管）","QRが汚れ・破損（品番は別に確認）","テスト・誤操作の読取"];
+const EXCLUDE_REASONS = ["二重に読んだ（同じ箱）","客先QRを読んだ（かんばんは別に読んだ）","出荷しない箱（別保管）","QRが汚れ・破損（品番は別に確認）","テスト・誤操作の読取"];
 function dispText(d){
   if(!d) return "";
   if(d.type === "exclude") return "対象外（" + (d.reason || "") + "）";
@@ -12721,6 +12734,8 @@ function download(blob, name){
 }
 
 $("bCsv").addEventListener("click", () => {
+  const why = reportBlockReason(state.bin);
+  if(why){ toast(why); render(); return; }               // 未処置NGがあればCSVも出さない（ポカヨケ）
   const q = v => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"';
   download(new Blob(["\ufeff" + exportRows().rows.map(r => r.map(q).join(",")).join("\r\n")], {type:"text/csv;charset=utf-8"}), fname("csv"));
 });
