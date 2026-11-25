@@ -74,6 +74,15 @@ buttonbutton.danger{color:var(--warn)}
 .exportBtns button{min-height:56px}
 .imeWarn{margin:8px 0;padding:12px;border:3px solid #c00;border-radius:10px;background:#ffe5e5;color:#900;font-weight:700;font-size:1.05rem}
 .imeWarn[hidden]{display:none}
+.handWarn{margin:8px 0;padding:12px;border:3px solid #e6a100;border-radius:10px;background:#fff6d6;color:#5a4200;font-weight:700;font-size:1.1rem}
+.handWarn[hidden],.handHint[hidden],.handQty[hidden]{display:none}
+.handHint{margin:6px 0;padding:8px 12px;border-radius:10px;background:#e8f0fe;color:#0b3d91;font-weight:700}
+.handRow{display:flex;gap:10px;margin-top:8px}
+.handRow button{flex:1;min-height:60px;font-size:1.1rem;font-weight:700}
+.handQty{margin:8px 0;padding:12px;border:3px solid var(--accent);border-radius:12px;background:var(--panel)}
+.handQty label{display:block;font-weight:700;margin:8px 0 4px}
+.handQty input{width:100%;min-height:60px;font-size:1.4rem;padding:6px 10px;box-sizing:border-box}
+.handQty .err{color:#c00;font-weight:700;min-height:1.2em;margin-top:6px}
 .lockBadge{display:inline-block;margin:6px 0;padding:4px 10px;border-radius:999px;background:#e8f5e9;border:2px solid #2e7d32;color:#1b5e20;font-weight:700;font-size:.95rem}
 .lockBadge.off{background:#fff3e0;border-color:#e65100;color:#bf360c}
 .dropZone{margin:10px 0;padding:22px 12px;border:3px dashed var(--accent);border-radius:14px;text-align:center;font-weight:700;font-size:1.05rem;min-height:84px;background:#fafafa}
@@ -407,6 +416,16 @@ body{border-top:10px solid var(--accent);transition:border-color .25s}
     <div class="row modeSwitch" role="group" aria-label="読み取り方法"><button type="button" id="modeHand" aria-pressed="true">ハンディスキャナー</button><button type="button" id="modeCamera" aria-pressed="false">内蔵カメラ</button></div>
     <div id="handPanel"><div id="imeWarn" class="imeWarn" role="alert" hidden></div><span class="lockBadge" id="lockBadge">🔒 半角ロック ON</span><label class="note" for="scanIn">TeraリーダーでQRを読むと、品番一覧と照合し、一致した品番を1箱として記録し、収容数ぶんの個数を加算します。</label>
     <input type="url" id="scanIn" lang="en" inputmode="url" enterkeyhint="done" autocorrect="off" autocomplete="off" autocapitalize="off" spellcheck="false" style="ime-mode:disabled" readonly placeholder="ここでQRを読み取り" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <div id="handHint" class="handHint" hidden>⌨ 手入力中：品番を入れて「確定」（またはEnter）を押してください。</div>
+    <div id="handWarn" class="handWarn" role="status" hidden></div>
+    <div class="handRow"><button type="button" id="bHandInput">⌨ 品番を手で入力する</button><button type="button" id="bHandCommit" class="primary" hidden>確定</button></div>
+    <div id="handQty" class="handQty" hidden>
+      <div><b>手入力：</b><b id="hqPart" class="mono"></b>　<small id="hqBin"></small></div>
+      <label for="hqQty">数量（個）　1箱分の個数</label>
+      <input type="number" id="hqQty" inputmode="numeric" min="1" max="99999" step="1" placeholder="例 20">
+      <div class="err" id="hqErr"></div>
+      <div class="handRow"><button type="button" id="hqAdd" class="primary">追加する</button><button type="button" id="hqCancel">やめる</button></div>
+    </div>
     </div>
     <div id="cameraPanel" hidden><p id="cameraNote" role="status"></p><label class="sw camOpt"><input type="checkbox" id="camFast" checked> 高速連続モード（同じQRも、映像から外すと次を数えます）</label><p class="note camOpt">別のQRは自動で読み取ります。OFFにすると、同じQRは下のボタンを押したときだけ数えます。</p><video id="cameraVideo" muted playsinline hidden aria-label="QR読み取り映像"></video><button type="button" id="repeatCamera" hidden>同じQRをもう1箱読み取る</button></div>
     <div id="manualPanel" class="manualPanel" hidden>
@@ -556,6 +575,8 @@ body{border-top:10px solid var(--accent);transition:border-color .25s}
         <li>OKは緑で「+個数　累計」が出ます。NGは赤で出て、記録だけして止まりません。</li>
         <li>読取欄の上に「現在の読取便」「直前の品番」「今回の個数」「この便の同じ品番の累計（箱／個）」が出ます。</li>
         <li>間違えて読んだら、結果の下の「↩ 取消」を押します。取り消した品番と、減った個数が表示されます。</li>
+        <li>QRが読めない箱は、読み取り欄の下の「⌨ 品番を手で入力する」を押し、品番を入れて「確定」（またはEnter）を押します。出てきた「数量（個）」を確かめて「追加する」を押すと、1箱として記録します。</li>
+        <li>読み取り欄に数字だけ・品番でない文字を手で入れたときは、黄色で「違いますよ！」と出るだけで、記録もNGにもなりません。入れ直してください。</li>
         <li>前の読取を直すときは、「読取順の一覧」の品番をタップし、品番・便・数量（個）を直して「修正する」を押します。「元の読取に戻す」で取り消せます。いらない読取は「🗑 この読取を削除」で消します。</li>
       </ol>
 
@@ -10989,7 +11010,7 @@ function findAlignmentPattern(matrix, alignmentPatternQuads, topRight, topLeft, 
 </script>
 <script>
 "use strict";
-const VER = "2026-11-25o";
+const VER = "2026-11-25p";
 const LS_KEY = "hinban_pile_v2";
 const MAX_BLOCKS = 15;
 
@@ -11408,7 +11429,7 @@ function tally(scope = "all"){
         const res = (!retry && (stored?.ok === false || stored?.manual)) ? stored : parsed;
         history.push({part:res.matchedKey, extracted:res.extracted, ok:res.ok,
           reason:res.reason, bin:stored?.bin, time:stored?.time, date:stored?.date || stored?.time?.split(" ")[0] || "",
-          cap:res.ok ? (res.qty || 1) : 0, manual:!!stored?.manual, small:!!stored?.small, raw:raw.trim(), fi, li:index, edited:stored?.edited ? stored.orig : null, disp:res.ok ? null : (stored?.disp || null), fixFor:res.ok ? (stored?.fixFor || null) : null, fixedNg:stored?.fixedNg || null});
+          cap:res.ok ? (res.qty || 1) : 0, manual:!!stored?.manual, small:!!stored?.small, hand:!!stored?.hand, raw:raw.trim(), fi, li:index, edited:stored?.edited ? stored.orig : null, disp:res.ok ? null : (stored?.disp || null), fixFor:res.ok ? (stored?.fixFor || null) : null, fixedNg:stored?.fixedNg || null});
         if(res.ok){
           hit++;
           const k = res.matchedKey;
@@ -11885,15 +11906,16 @@ function splitQRBuffer(raw){
   return [str];
 }
 
-function commitScanInput(){
+function commitScanInput(fromTimer){
   clearTimeout(scanInputTimer);
   scanInputTimer = null;
   const input = $("scanIn");
+  if(fromTimer === true && input.value.trim().length <= 1){ setHandMode(true); return; }   // 1文字だけ止まった：手入力とみなして待つ
   if(imeComposing){ input.blur(); input.focus(); }       // 日本語入力の変換中でも、確定させてから読み込む（二重に残さない）
   const v = input.value.trim();
   if(!v) return;
   commitQRRecords(splitQRBuffer(v));
-  input.value = "";
+  input.value = ""; typing.len = 0;
   input.focus();
 }
 
@@ -12592,6 +12614,7 @@ $("scanIn").addEventListener("input", () => {
     poisonTimer = setTimeout(() => { const raw = poisonRaw; poisonRaw = null; if(state.scanBin && !scanHold && !saveFailed) commitQRRecords([raw.trim() || "日本語入力"]); }, 150);
     return;
   }
+  if(trackTyping(input)) return;                          // 手で打っている間は自動で確定しない（Enterか「確定」で）
   const v = input.value;
   if(scanInputTimer === null && v && !scanHold) playScanSound("read");
   // 先頭 028031 の連続読取を検出したら確定済み部分を即時コミット
@@ -12610,9 +12633,113 @@ $("scanIn").addEventListener("input", () => {
   }
   // 入力が一時停止したら350msで自動確定
   if(input.value.trim().length > 0){
-    scanInputTimer = setTimeout(commitScanInput, 120);
+    scanInputTimer = setTimeout(() => commitScanInput(true), 120);
   }
 });
+
+/* ---------- 読取欄での手入力（2026-11-25p） ----------
+   ハンディは文字がまとめて速く届く。人が打つと1文字ごとに間があく（HAND_GAP より長い）。
+   手入力は自動で確定せず、Enterか「確定」で判定する。品番でなければ記録しないで注意だけ出す（NGにしない）。 */
+const HAND_GAP = 60;
+let handMode = false, handQtyPart = null;
+const typing = {at:0, len:0, run:0, runStart:0};
+function setHandMode(on){
+  handMode = !!on;
+  clearTimeout(scanInputTimer); scanInputTimer = null;
+  $("handHint").hidden = !handMode;
+  $("bHandCommit").hidden = !handMode;
+  $("bHandInput").hidden = handMode;
+}
+function showHandWarn(msg){ $("handWarn").hidden = !msg; $("handWarn").textContent = msg || ""; }
+function trackTyping(input){
+  const now = performance.now(), v = input.value, grew = v.length - typing.len, gap = now - typing.at;
+  if(!v){ typing.len = 0; typing.at = now; return handMode; }
+  if(grew === 1){
+    if(typing.len === 0){ typing.run = 1; typing.runStart = 0; if(handMode) showHandWarn(""); }
+    else if(gap > HAND_GAP){ if(!handMode) setHandMode(true); typing.run = 1; typing.runStart = v.length - 1; }
+    else typing.run++;
+    if(handMode && typing.run >= 6 && typing.runStart > 0){     // 手で打っている途中にハンディで読んだ：打ちかけは捨てて、読取を優先
+      const left = v.slice(0, typing.runStart);
+      input.value = v.slice(typing.runStart);
+      setHandMode(false);
+      showHandWarn("打ちかけの「" + left + "」は記録していません。ハンディの読取を優先しました。");
+    }else if(handMode && typing.run >= 6 && typing.runStart === 0 && gap <= HAND_GAP){
+      setHandMode(false);                                       // 最初から速く届いた＝ハンディ
+    }
+  }
+  typing.len = input.value.length; typing.at = now;
+  return handMode;
+}
+function handWarnText(raw, r){
+  const v = raw.length > 30 ? raw.slice(0, 30) + "…" : raw;
+  if(/^[0-9]+$/.test(raw)) return "違いますよ！「" + v + "」は数字だけです。ここは品番かQRの欄です。数量は、品番を入れて「確定」したあとに出る「数量（個）」に入れます。（記録していません）";
+  if(r && r.reason === "品番一覧にありません") return "違いますよ！「" + v + "」は品番一覧にありません。品番を確かめてください。（記録していません）";
+  if(r && r.reason === "品番候補が複数あります") return "違いますよ！品番が2つ以上入っています。1つずつ入れてください。（記録していません）";
+  return "違いますよ！「" + v + "」は品番ではありません。品番は 例 JH001-001810-1 の形で入れます。（記録していません）";
+}
+function commitHandInput(){
+  const input = $("scanIn"), raw = toHalf(input.value).trim();
+  input.value = ""; typing.len = 0;
+  setHandMode(false);
+  if(!raw){ input.focus(); return; }
+  if(!state.scanBin){ warnBeforeStart(); return; }
+  if(scanHold || saveFailed){ if(saveFailed) renderSaveAlert(); return; }
+  const r = JP_CONVERTED.test(raw) ? null : extractQR(raw);
+  if(!r || !r.ok){
+    showHandWarn(r ? handWarnText(raw, r) : "違いますよ！日本語が入っています。キーボードを「半角英数」にして、品番を入れてください。（記録していません）");
+    if(soundSettings.vibrate && navigator.vibrate) navigator.vibrate(80);
+    trialLog("handwarn", state.scanBin);
+    input.focus(); return;
+  }
+  showHandWarn("");
+  openHandQty(r.matchedKey);
+}
+function lastCapOf(part){
+  const h = tally().history;
+  for(let i = h.length - 1; i >= 0; i--) if(h[i].ok && h[i].part === part && !h[i].small && h[i].cap) return h[i].cap;
+  return "";
+}
+function openHandQty(part){
+  handQtyPart = part;
+  $("hqPart").textContent = part;
+  $("hqBin").textContent = binLabel(state.scanBin) + "に1箱として記録します";
+  const cap = lastCapOf(part);
+  $("hqQty").value = cap;
+  $("hqErr").textContent = cap ? "前に読んだときの収容数 " + cap + "個 を入れています。違えば直してください。" : "";
+  $("handQty").hidden = false;
+  $("hqQty").focus(); $("hqQty").select();
+}
+function closeHandQty(){ handQtyPart = null; $("handQty").hidden = true; $("hqErr").textContent = ""; $("scanIn").focus(); }
+function addHandRecord(){
+  const part = handQtyPart, qtyRaw = String($("hqQty").value).trim();
+  const qty = /^\d+$/.test(qtyRaw) ? parseInt(qtyRaw, 10) : 0;
+  if(!part) return;
+  if(!state.scanBin){ $("hqErr").textContent = "先に、上の便（1便・2便など）を押してください"; return; }
+  if(qty < 1 || qty > 99999){ $("hqErr").textContent = "数量（個）を1〜99999の整数で入れてください"; $("hqQty").focus(); return; }
+  if(saveFailed){ renderSaveAlert(); return; }
+  const rec = {ok:true, manual:true, hand:true, matchedKey:part, extracted:part, reason:"", bin:state.scanBin, time:stamp(), date:localDateISO(), cap:qty, qty:qty,
+    pre:{p:lastOkPart, n:runLen, c:combo}};
+  let m = files.find(f => f.hash === "manual");
+  if(!m){ m = {name:"Tera QR読取", hash:"manual", text:"", at:stamp()}; files.push(m); }
+  m.results ||= Array(m.text ? m.text.split(/\r?\n/).length : 0).fill(null);
+  runLen = part === lastOkPart ? runLen + 1 : 1; lastOkPart = part; combo++;
+  m.results.push(rec);
+  m.text += (m.text ? "\n" : "") + "手入力 " + part + " 数量" + qty;
+  m.at = stamp(); dirty++;
+  save(); render(); updateCombo(false);
+  const t = tally(), bn = String(state.scanBin);
+  setResult("ok", "OK　手入力 +" + qty + "個　累計 " + (t.piecesByBin.get(bn)?.get(part) || 0) + "個", part + "　" + binLabel(bn) + "（手入力）");
+  playScanSound(saveFailed ? "ng" : "ok");
+  closeHandQty();
+}
+$("bHandInput").addEventListener("click", () => {
+  if(!state.scanBin){ warnBeforeStart(); toast("先に便（1便・2便など）を押してください"); return; }
+  setHandMode(true); showHandWarn(""); $("scanIn").focus();
+});
+$("bHandCommit").addEventListener("click", commitHandInput);
+$("hqAdd").addEventListener("click", addHandRecord);
+$("hqCancel").addEventListener("click", closeHandQty);
+$("hqQty").addEventListener("keydown", e => { if(e.key === "Enter"){ e.preventDefault(); addHandRecord(); } });
 
 let imeComposing = false, poisonRaw = null, poisonTimer = null;
 function showImeWarn(msg){ $("imeWarn").hidden = !msg; $("imeWarn").textContent = msg || ""; }
@@ -12645,7 +12772,9 @@ $("scanIn").addEventListener("keydown", e => {
   }
   if(e.key === "Enter"){
     e.preventDefault();
-    commitScanInput();
+    const v = $("scanIn").value;
+    if(handMode || (v.trim().length <= 1 && performance.now() - typing.at > HAND_GAP)) commitHandInput();
+    else commitScanInput();
   }
 });
 
@@ -12930,7 +13059,7 @@ function exportForm(){
   const sheet2 = tableSheet(st, [16,12,12,30,28,10,14], listRows, {num:{5:3,6:3}, center:[0,1,2], total:true});
   /* --- 3枚目：読取履歴 --- */
   const histRows = [["順番","読取日","読取時刻","便","品番","抽出表示","収容数","判定","理由","QR原文（読み取った文字列そのまま）","NGの処置"],
-    ...history.map((r, i) => [i + 1, r.date, r.time, r.bin, r.part, r.extracted, r.cap || null, r.ok ? "OK" : "NG", r.edited ? "修正（元：" + r.edited.part + (r.edited.ok ? "・" + r.edited.cap + "個" : "・NG") + "）" : r.manual ? (r.small ? "少量品（手入力）" : "手入力（一覧外の品番）") : r.reason, r.raw || "", histDispText(r)])];
+    ...history.map((r, i) => [i + 1, r.date, r.time, r.bin, r.part, r.extracted, r.cap || null, r.ok ? "OK" : "NG", r.edited ? "修正（元：" + r.edited.part + (r.edited.ok ? "・" + r.edited.cap + "個" : "・NG") + "）" : r.manual ? (r.small ? "少量品（手入力）" : r.hand ? "手入力（読取欄）" : "手入力（一覧外の品番）") : r.reason, r.raw || "", histDispText(r)])];
   const sheet3 = tableSheet(st, [8,14,16,8,30,28,9,8,34,95,36], histRows, {num:{6:3}, center:[0,1,2,3,7], noShrink:[9], rowFill:row => row[7] === "NG" ? "FFE8E5" : null});
 
   const names = ["山清報告書","出荷数一覧","読取履歴"], data = [sheet1, sheet2, sheet3];

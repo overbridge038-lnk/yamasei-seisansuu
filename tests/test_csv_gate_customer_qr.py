@@ -12,7 +12,7 @@ with sync_playwright() as p:
     R=[]
     def chk(n,c,i=""): R.append(c); print(("PASS " if c else "FAIL ")+n,i)
     pg.goto(INDEX); pg.evaluate("localStorage.clear()"); pg.reload()
-    chk("verを表示（2026-11-25o）","2026-11-25o" in pg.content())
+    chk("verを表示",pg.evaluate("VER")>="2026-11-25o" and pg.evaluate("VER") in pg.content(),pg.evaluate("VER"))
     A="028031,JH001-001830-1,25,8"
     print("== 1. 客先QRの判定")
     for raw in [",,,","j","g"," , , ","JG"]:
