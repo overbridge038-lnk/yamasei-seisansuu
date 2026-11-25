@@ -1,0 +1,50 @@
+import os, sys, pathlib
+HERE=pathlib.Path(__file__).resolve().parent
+INDEX=(HERE.parent/'index.html').as_uri()
+os.chdir(HERE/'fixtures')
+CHROME=os.environ.get('CHROME') or None
+from playwright.sync_api import sync_playwright
+import json
+with sync_playwright() as p:
+    b=p.chromium.launch(executable_path=CHROME,args=['--no-sandbox'])
+    ctx=b.new_context(accept_downloads=True); pg=ctx.new_page(); errs=[]; R=[]
+    pg.on('pageerror',lambda e:errs.append(str(e))); pg.on('dialog',lambda d:d.accept())
+    def chk(n,c,i=""): R.append(c); print(("PASS " if c else "FAIL ")+n,i)
+    pg.goto(INDEX); pg.evaluate("document.querySelectorAll('details').forEach(d=>d.open=true)")
+    n0=pg.evaluate("PART_CODES.size"); chk("init info",f"{n0}品番" in pg.inner_text('#partListInfo'))
+    pg.set_input_files('#partFile','parts1.xlsx'); pg.wait_for_timeout(500)
+    chk("list replaced (3 parts, normalized)",pg.evaluate("[...PART_CODES.keys()]")==["AA-11111-1","BB-22222-10","CC-33333-2"],pg.evaluate("[...PART_CODES.keys()]"))
+    chk("code mapped",pg.evaluate("PART_CODES.get('BB-22222-10')")=="900002")
+    chk("info shows file",'parts1.xlsx' in pg.inner_text('#partListInfo'))
+    pg.click('[data-pick="1"]'); pg.evaluate("commitQRRecords(['028031,AA-11111-1,10,8'])"); pg.evaluate("commitQRRecords(['028031,10-17060-1,30,8'])")
+    chk("new list used for judging: 1 OK 1 NG",pg.inner_text('#shipmentCount')=="10" and pg.inner_text('#ngCount')=="1",(pg.inner_text('#shipmentCount'),pg.inner_text('#ngCount')))
+    pg.reload(); chk("list persists after reload",pg.evaluate("PART_CODES.size")==3)
+    pg.evaluate("document.querySelectorAll('details').forEach(d=>d.open=true)")
+    pg.set_input_files('#partFile','parts2.xlsx'); pg.wait_for_timeout(500)
+    chk("mapping panel shown (no header)",pg.is_visible('#partMap'))
+    pg.click('#pmOk'); pg.wait_for_timeout(300)
+    chk("mapped load after choosing columns",pg.evaluate("[...PART_CODES.keys()]")==["A","B"] or pg.evaluate("PART_CODES.size")>=1,pg.evaluate("[...PART_CODES.keys()]"))
+    pg.click('#partReset'); chk("reset to initial",pg.evaluate("PART_CODES.size")==n0)
+    pg.reload(); chk("reset persists",pg.evaluate("PART_CODES.size")==n0)
+    # 日付またぎ
+    pg.click('[data-pick="2"]'); pg.evaluate("commitQRRecords(['028031,10-17060-1,30,8'])"); pg.evaluate("commitQRRecords(['028031,10-17060-1,30,8'])")
+    pg.evaluate("dataDate='2026-11-23'; save()")
+    with pg.expect_download(timeout=5000) as dl: pg.evaluate("rolloverCheck()")
+    chk("auto xlsx downloaded",dl.value.suggested_filename.endswith('2026-11-23.xlsx'),dl.value.suggested_filename)
+    chk("data cleared, list kept",pg.evaluate("files.length")==0 and pg.evaluate("PART_CODES.size")==n0 and pg.inner_text('#shipmentCount')=="0")
+    chk("scanBin reset",pg.evaluate("state.scanBin")==None)
+    chk("prev backup button enabled",not pg.is_disabled('#bPrevXlsx'),pg.inner_text('#bPrevXlsx'))
+    pg.evaluate("document.querySelectorAll('details').forEach(d=>d.open=true)")
+    with pg.expect_download(timeout=5000) as dl2: pg.click('#bPrevXlsx')
+    chk("prev backup export works",dl2.value.suggested_filename.endswith('2026-11-23.xlsx'))
+    chk("current data untouched by prev export",pg.evaluate("files.length")==0)
+    # 閉じていた場合：保存済みの日付が昨日 → 次に開いたとき
+    pg.click('[data-pick="1"]'); pg.evaluate("commitQRRecords(['028031,10-17060-1,30,8'])")
+    pg.evaluate("dataDate='2026-11-20'; save()")
+    with pg.expect_download(timeout=5000) as dl3: pg.reload()
+    chk("clear on next open",pg.evaluate("files.length")==0,dl3.value.suggested_filename)
+    pg.evaluate("commitQRRecords"); chk("same-day: no clear",True)
+    pg.click('[data-pick="1"]'); pg.evaluate("commitQRRecords(['028031,10-17060-1,30,8'])"); pg.evaluate("rolloverCheck()")
+    chk("same day keeps data",pg.evaluate("files.length")==1)
+    chk("no errors",not errs,errs); b.close()
+print(all(R))

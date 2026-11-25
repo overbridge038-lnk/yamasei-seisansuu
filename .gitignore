@@ -1,0 +1,15 @@
+# テストが作る出力（コミットしない）
+tests/fixtures/allbins.xlsx
+tests/fixtures/bad.xls
+tests/fixtures/man.png
+tests/fixtures/out7.xlsx
+tests/fixtures/r1.xlsx
+tests/fixtures/r2.xlsx
+tests/fixtures/s.png
+tests/fixtures/sq.xlsx
+tests/fixtures/sq2.xlsx
+tests/fixtures/trial.xlsx
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
