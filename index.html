@@ -11010,7 +11010,7 @@ function findAlignmentPattern(matrix, alignmentPatternQuads, topRight, topLeft, 
 </script>
 <script>
 "use strict";
-const VER = "2026-11-25p";
+const VER = "2026-11-25q";
 const LS_KEY = "hinban_pile_v2";
 const MAX_BLOCKS = 15;
 
@@ -12605,7 +12605,8 @@ $("bResume").addEventListener("click", () => acknowledgeNG(false));
 $("scanIn").addEventListener("input", () => {
   const input = $("scanIn");
   clearTimeout(scanInputTimer);
-  if(!imeComposing && input.value !== toHalf(input.value)) input.value = toHalf(input.value);   // 全角→半角
+  // 全角→半角。読取欄（type=url）は末尾の空白を消してしまうので、欄の中では空白をNBSPで持つ（確定時の toHalf で空白に戻る）
+  if(!imeComposing){ const hv = toHalf(input.value).replace(/ /g, "\u00A0"); if(input.value !== hv) input.value = hv; }
   if($("hanLock").checked && (poisonRaw !== null || JP_CONVERTED.test(input.value))){
     // 日本語に変換された読取：残りの文字が届き終わる（150ms静か）まで待ち、1件のNGとして記録して捨てる（欠けた品番で数えない）
     poisonRaw = (poisonRaw || "") + input.value; input.value = "";
@@ -12637,15 +12638,18 @@ $("scanIn").addEventListener("input", () => {
   }
 });
 
-/* ---------- 読取欄での手入力（2026-11-25p） ----------
-   ハンディは文字がまとめて速く届く。人が打つと1文字ごとに間があく（HAND_GAP より長い）。
-   手入力は自動で確定せず、Enterか「確定」で判定する。品番でなければ記録しないで注意だけ出す（NGにしない）。 */
-const HAND_GAP = 60;
+/* ---------- 読取欄での手入力（2026-11-25p、25qで見直し） ----------
+   ハンディの読取は、今までどおり「120ms 何も来なければ確定」。読取の文字は途中で区切らず、捨てない。
+   手入力とみなすのは、①「⌨ 品番を手で入力する」を押したとき、②1文字だけで120ms止まったとき（人が打った）、
+   ③1文字のあと間をあけてEnterを押したとき。手入力はEnterか「確定」で判定し、品番でなければ記録しない（NGにしない）。
+   手入力中にハンディで読んだ（速い文字が続いた／カンマ・空白入り・長い）ときは、そのまま読取として扱う。 */
+const HAND_GAP = 120, BURST_GAP = 40;
 let handMode = false, handQtyPart = null;
-const typing = {at:0, len:0, run:0, runStart:0};
+const typing = {at:0, len:0, run:0};
 function setHandMode(on){
   handMode = !!on;
   clearTimeout(scanInputTimer); scanInputTimer = null;
+  typing.run = 0;
   $("handHint").hidden = !handMode;
   $("bHandCommit").hidden = !handMode;
   $("bHandInput").hidden = handMode;
@@ -12653,23 +12657,16 @@ function setHandMode(on){
 function showHandWarn(msg){ $("handWarn").hidden = !msg; $("handWarn").textContent = msg || ""; }
 function trackTyping(input){
   const now = performance.now(), v = input.value, grew = v.length - typing.len, gap = now - typing.at;
-  if(!v){ typing.len = 0; typing.at = now; return handMode; }
-  if(grew === 1){
-    if(typing.len === 0){ typing.run = 1; typing.runStart = 0; if(handMode) showHandWarn(""); }
-    else if(gap > HAND_GAP){ if(!handMode) setHandMode(true); typing.run = 1; typing.runStart = v.length - 1; }
-    else typing.run++;
-    if(handMode && typing.run >= 6 && typing.runStart > 0){     // 手で打っている途中にハンディで読んだ：打ちかけは捨てて、読取を優先
-      const left = v.slice(0, typing.runStart);
-      input.value = v.slice(typing.runStart);
-      setHandMode(false);
-      showHandWarn("打ちかけの「" + left + "」は記録していません。ハンディの読取を優先しました。");
-    }else if(handMode && typing.run >= 6 && typing.runStart === 0 && gap <= HAND_GAP){
-      setHandMode(false);                                       // 最初から速く届いた＝ハンディ
-    }
+  if(!v){ typing.len = 0; typing.at = now; typing.run = 0; return handMode; }
+  if(typing.len === 0 && grew > 0) showHandWarn("");
+  if(handMode && grew > 0){
+    typing.run = (gap <= BURST_GAP || grew > 1) ? typing.run + grew : 1;
+    if(typing.run >= 6) setHandMode(false);                 // ハンディの読取が来た：打ちかけも捨てずに、まとめて読取として扱う
   }
   typing.len = input.value.length; typing.at = now;
   return handMode;
 }
+const looksLikeScan = raw => /[,\s]/.test(raw) || raw.length > 24;   // 手で打つ品番にカンマ・空白はない
 function handWarnText(raw, r){
   const v = raw.length > 30 ? raw.slice(0, 30) + "…" : raw;
   if(/^[0-9]+$/.test(raw)) return "違いますよ！「" + v + "」は数字だけです。ここは品番かQRの欄です。数量は、品番を入れて「確定」したあとに出る「数量（個）」に入れます。（記録していません）";
@@ -12684,6 +12681,7 @@ function commitHandInput(){
   if(!raw){ input.focus(); return; }
   if(!state.scanBin){ warnBeforeStart(); return; }
   if(scanHold || saveFailed){ if(saveFailed) renderSaveAlert(); return; }
+  if(looksLikeScan(raw) && !JP_CONVERTED.test(raw)){ commitQRRecords(splitQRBuffer(raw)); input.focus(); return; }   // ハンディの読取だった
   const r = JP_CONVERTED.test(raw) ? null : extractQR(raw);
   if(!r || !r.ok){
     showHandWarn(r ? handWarnText(raw, r) : "違いますよ！日本語が入っています。キーボードを「半角英数」にして、品番を入れてください。（記録していません）");
@@ -12752,7 +12750,7 @@ $("scanIn").addEventListener("keydown", e => {
   e.preventDefault();
   const ch = toHalf(e.key);
   if(!/^[\x20-\x7e]$/.test(ch)){ showImeWarn("⚠ 日本語入力になっています。キーボードを「半角英数」に切り替えてください。"); return; }
-  $("scanIn").value += ch;
+  $("scanIn").value += ch === " " ? "\u00A0" : ch;          // 空白が消えないように（固定長QRの区切り）
   $("scanIn").dispatchEvent(new Event("input"));
 }, true);
 $("scanIn").addEventListener("beforeinput", e => {
