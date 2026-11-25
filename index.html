@@ -11010,7 +11010,7 @@ function findAlignmentPattern(matrix, alignmentPatternQuads, topRight, topLeft, 
 </script>
 <script>
 "use strict";
-const VER = "2026-11-25q";
+const VER = "2026-11-25r";
 const LS_KEY = "hinban_pile_v2";
 const MAX_BLOCKS = 15;
 
@@ -11429,7 +11429,7 @@ function tally(scope = "all"){
         const res = (!retry && (stored?.ok === false || stored?.manual)) ? stored : parsed;
         history.push({part:res.matchedKey, extracted:res.extracted, ok:res.ok,
           reason:res.reason, bin:stored?.bin, time:stored?.time, date:stored?.date || stored?.time?.split(" ")[0] || "",
-          cap:res.ok ? (res.qty || 1) : 0, manual:!!stored?.manual, small:!!stored?.small, hand:!!stored?.hand, raw:raw.trim(), fi, li:index, edited:stored?.edited ? stored.orig : null, disp:res.ok ? null : (stored?.disp || null), fixFor:res.ok ? (stored?.fixFor || null) : null, fixedNg:stored?.fixedNg || null});
+          cap:res.ok ? (res.qty || 1) : 0, manual:!!stored?.manual, small:!!stored?.small, hand:!!stored?.hand, offList:!!stored?.offList, raw:raw.trim(), fi, li:index, edited:stored?.edited ? stored.orig : null, disp:res.ok ? null : (stored?.disp || null), fixFor:res.ok ? (stored?.fixFor || null) : null, fixedNg:stored?.fixedNg || null});
         if(res.ok){
           hit++;
           const k = res.matchedKey;
@@ -12683,27 +12683,30 @@ function commitHandInput(){
   if(scanHold || saveFailed){ if(saveFailed) renderSaveAlert(); return; }
   if(looksLikeScan(raw) && !JP_CONVERTED.test(raw)){ commitQRRecords(splitQRBuffer(raw)); input.focus(); return; }   // ハンディの読取だった
   const r = JP_CONVERTED.test(raw) ? null : extractQR(raw);
-  if(!r || !r.ok){
+  const offList = !!r && !r.ok && r.reason === "品番一覧にありません" && !!r.matchedKey;   // 一覧にない品番も手入力で記録できる（25r）
+  if(!r || (!r.ok && !offList)){
     showHandWarn(r ? handWarnText(raw, r) : "違いますよ！日本語が入っています。キーボードを「半角英数」にして、品番を入れてください。（記録していません）");
     if(soundSettings.vibrate && navigator.vibrate) navigator.vibrate(80);
     trialLog("handwarn", state.scanBin);
     input.focus(); return;
   }
   showHandWarn("");
-  openHandQty(r.matchedKey);
+  openHandQty(r.matchedKey, offList);
 }
 function lastCapOf(part){
   const h = tally().history;
   for(let i = h.length - 1; i >= 0; i--) if(h[i].ok && h[i].part === part && !h[i].small && h[i].cap) return h[i].cap;
   return "";
 }
-function openHandQty(part){
-  handQtyPart = part;
+let handOffList = false;
+function openHandQty(part, offList){
+  handQtyPart = part; handOffList = !!offList;
   $("hqPart").textContent = part;
   $("hqBin").textContent = binLabel(state.scanBin) + "に1箱として記録します";
   const cap = lastCapOf(part);
   $("hqQty").value = cap;
-  $("hqErr").textContent = cap ? "前に読んだときの収容数 " + cap + "個 を入れています。違えば直してください。" : "";
+  $("hqErr").textContent = (handOffList ? "⚠ 品番一覧にない品番です。品番が正しいか確かめてから追加してください。" : "") +
+    (cap ? "前に読んだときの収容数 " + cap + "個 を入れています。違えば直してください。" : "");
   $("handQty").hidden = false;
   $("hqQty").focus(); $("hqQty").select();
 }
@@ -12715,7 +12718,7 @@ function addHandRecord(){
   if(!state.scanBin){ $("hqErr").textContent = "先に、上の便（1便・2便など）を押してください"; return; }
   if(qty < 1 || qty > 99999){ $("hqErr").textContent = "数量（個）を1〜99999の整数で入れてください"; $("hqQty").focus(); return; }
   if(saveFailed){ renderSaveAlert(); return; }
-  const rec = {ok:true, manual:true, hand:true, matchedKey:part, extracted:part, reason:"", bin:state.scanBin, time:stamp(), date:localDateISO(), cap:qty, qty:qty,
+  const rec = {ok:true, manual:true, hand:true, offList:handOffList, matchedKey:part, extracted:part, reason:"", bin:state.scanBin, time:stamp(), date:localDateISO(), cap:qty, qty:qty,
     pre:{p:lastOkPart, n:runLen, c:combo}};
   let m = files.find(f => f.hash === "manual");
   if(!m){ m = {name:"Tera QR読取", hash:"manual", text:"", at:stamp()}; files.push(m); }
@@ -13057,7 +13060,7 @@ function exportForm(){
   const sheet2 = tableSheet(st, [16,12,12,30,28,10,14], listRows, {num:{5:3,6:3}, center:[0,1,2], total:true});
   /* --- 3枚目：読取履歴 --- */
   const histRows = [["順番","読取日","読取時刻","便","品番","抽出表示","収容数","判定","理由","QR原文（読み取った文字列そのまま）","NGの処置"],
-    ...history.map((r, i) => [i + 1, r.date, r.time, r.bin, r.part, r.extracted, r.cap || null, r.ok ? "OK" : "NG", r.edited ? "修正（元：" + r.edited.part + (r.edited.ok ? "・" + r.edited.cap + "個" : "・NG") + "）" : r.manual ? (r.small ? "少量品（手入力）" : r.hand ? "手入力（読取欄）" : "手入力（一覧外の品番）") : r.reason, r.raw || "", histDispText(r)])];
+    ...history.map((r, i) => [i + 1, r.date, r.time, r.bin, r.part, r.extracted, r.cap || null, r.ok ? "OK" : "NG", r.edited ? "修正（元：" + r.edited.part + (r.edited.ok ? "・" + r.edited.cap + "個" : "・NG") + "）" : r.manual ? (r.small ? "少量品（手入力）" : r.hand ? (r.offList ? "手入力（一覧外の品番）" : "手入力（読取欄）") : "手入力（一覧外の品番）") : r.reason, r.raw || "", histDispText(r)])];
   const sheet3 = tableSheet(st, [8,14,16,8,30,28,9,8,34,95,36], histRows, {num:{6:3}, center:[0,1,2,3,7], noShrink:[9], rowFill:row => row[7] === "NG" ? "FFE8E5" : null});
 
   const names = ["山清報告書","出荷数一覧","読取履歴"], data = [sheet1, sheet2, sheet3];
