@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>山清工業㈱生産数集計｜品番別読取カウント</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1f6f5c">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <style>
 :root{
   --bg:#f4f5f2; --panel:#ffffff; --ink:#1d2321; --sub:#66706b; --line:#dfe3de;
@@ -21,6 +25,8 @@ body{background:var(--bg);color:var(--ink);font:15px/1.5 "Hiragino Sans","Yu Got
 .wrap{max-width:1500px;margin:0 auto;padding:16px}
 header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:12px}
 h1{font-size:20px;margin:0;font-weight:700}
+.offBadge{font-size:13px;font-weight:700;border-radius:999px;padding:2px 10px;margin-left:6px;background:#e8f3ef;color:#1b5a4a;border:1px solid #9cc9b9}
+.offBadge.warn{background:#fff6d6;color:#5a4200;border-color:#e6a100}
 .ver{font-size:12px;color:var(--sub);border:1px solid var(--line);border-radius:999px;padding:1px 10px}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
@@ -372,7 +378,7 @@ body{border-top:10px solid var(--accent);transition:border-color .25s}
 <div class="wrap">
 <header class="pageHead">
   <div><h1>山清工業㈱生産数集計</h1><span class="note" id="masterInfo"></span></div>
-  <span class="ver" id="ver"></span>
+  <div><span class="ver" id="ver"></span><span class="offBadge warn" id="offBadge" hidden></span></div>
 </header>
 <main>
   <button type="button" class="ngAndon" id="ngAndon" hidden>⚠ 未処置NG <b id="ngAndonN">0</b>件 <small id="ngAndonBins"></small><small>（押すと確認・処置）</small></button>
@@ -617,6 +623,8 @@ body{border-top:10px solid var(--accent);transition:border-color .25s}
 
       <h3>6. 日付が変わったとき</h3>
       <ul>
+        <li><b>オフラインで使う：</b>最初に1回、ネットにつながる場所でツールのURLを開きます。右上に「✔ オフライン対応」と出れば、そのあとはネットがなくても同じURLで開けます（ブラウザの「ホーム画面に追加」もできます）。</li>
+        <li><b>更新するとき：</b>ネットにつながる場所でツールを開きます。新しい版が自動で入り、「ver ○○ に更新しました」と出ます。読取データと品番一覧はそのまま残ります。</li>
         <li>24時を過ぎると、読取データをExcelに保存してから、自動でクリアします。品番一覧は消えません。</li>
         <li>クリア後は、便をもう一度タッチします。</li>
         <li>Excelが保存されていないときは、「前日の退避データをExcel出力」から出せます。</li>
@@ -11010,7 +11018,7 @@ function findAlignmentPattern(matrix, alignmentPatternQuads, topRight, topLeft, 
 </script>
 <script>
 "use strict";
-const VER = "2026-11-25r";
+const VER = "2026-11-26a";
 const LS_KEY = "hinban_pile_v2";
 const MAX_BLOCKS = 15;
 
@@ -13436,6 +13444,33 @@ document.addEventListener("visibilitychange", () => { if(!document.hidden) resto
 if(scanHold) $("bAcknowledgeNG").focus();
 else ($("scanBin").value ? $("bStartScan") : $("scanBin")).focus();
 
+/* ---------- オフラインで使う（2026-11-26a） ----------
+   一度オンラインで開くと sw.js が端末に保存し、そのあとはオフラインでも同じURLで開ける。更新はオンラインで開いたときに入る。 */
+function renderOfflineBadge(){
+  const b = $("offBadge"), online = navigator.onLine;
+  const ready = !!(navigator.serviceWorker && navigator.serviceWorker.controller);
+  b.hidden = false;
+  if(!("serviceWorker" in navigator) || !/^https?:$/.test(location.protocol)){
+    b.className = "offBadge warn"; b.textContent = "オフライン保存なし（このファイルを直接開いています）"; return;
+  }
+  if(ready){ b.className = "offBadge"; b.textContent = online ? "✔ オフライン対応（オンライン）" : "📴 オフラインで使用中"; }
+  else{ b.className = "offBadge warn"; b.textContent = online ? "オフライン保存の準備中…" : "⚠ まだ端末に保存されていません。ネットにつないで開き直してください"; }
+}
+(function(){
+  try{
+    const last = localStorage.getItem("hinban_ver_seen");
+    if(last && last !== VER) setTimeout(() => toast("ver " + VER + " に更新しました（前：" + last + "）"), 800);
+    localStorage.setItem("hinban_ver_seen", VER);
+  }catch(e){}
+  if("serviceWorker" in navigator && /^https?:$/.test(location.protocol)){
+    navigator.serviceWorker.register("sw.js").then(reg => { reg.update().catch(() => {}); return navigator.serviceWorker.ready; })
+      .then(renderOfflineBadge).catch(err => { console.error(err); renderOfflineBadge(); });
+    navigator.serviceWorker.addEventListener("controllerchange", renderOfflineBadge);
+  }
+  window.addEventListener("online", renderOfflineBadge);
+  window.addEventListener("offline", renderOfflineBadge);
+  renderOfflineBadge();
+})();
 </script>
 </body>
 </html>

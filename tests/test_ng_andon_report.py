@@ -4,7 +4,8 @@ INDEX=(HERE.parent/'index.html').as_uri()
 os.chdir(HERE/'fixtures')
 CHROME=os.environ.get('CHROME') or None
 from playwright.sync_api import sync_playwright
-import io, openpyxl, base64, json
+import io, openpyxl, base64, json, datetime
+TODAY=datetime.date.today().isoformat(); YDAY=(datetime.date.today()-datetime.timedelta(days=1)).isoformat()
 with sync_playwright() as p:
     b=p.chromium.launch(executable_path=CHROME,args=['--no-sandbox'])
     ctx=b.new_context(accept_downloads=True,viewport={'width':800,'height':1200},has_touch=True); pg=ctx.new_page()
@@ -110,9 +111,9 @@ with sync_playwright() as p:
     with pg.expect_download() as d: pg.click('#trialExport')
     d.value.save_as('trial.xlsx'); wb=openpyxl.load_workbook('trial.xlsx'); chk("試行記録Excel（改修後・改修前の2シート）",wb.sheetnames==["改修後（自動記録）","改修前（記入用）"],wb.sheetnames)
     # 旧データ（dispなし）
-    pg.evaluate("""()=>{localStorage.setItem('hinban_pile_v2',JSON.stringify({files:[{name:'old',hash:'manual',text:'ZZ-OLD-1\\n028031,JH001-001830-1,25,8',at:'x',results:[{ok:false,matchedKey:'ZZ-OLD-1',extracted:'ZZ-OLD-1',reason:'品番一覧にありません',bin:'1',time:'x',date:'"""+"2026-11-25"+"""',cap:0},{ok:true,matchedKey:'JH001-001830-1',extracted:'JH001-001830-1',reason:'',bin:'1',time:'x',date:'2026-11-25',cap:25}]}],readDate:'2026-11-25',dataDate:'"""+"2026-11-25"+"""',bin:'1'}))}""")
+    pg.evaluate("""()=>{localStorage.setItem('hinban_pile_v2',JSON.stringify({files:[{name:'old',hash:'manual',text:'ZZ-OLD-1\\n028031,JH001-001830-1,25,8',at:'x',results:[{ok:false,matchedKey:'ZZ-OLD-1',extracted:'ZZ-OLD-1',reason:'品番一覧にありません',bin:'1',time:'x',date:'"""+TODAY+"""',cap:0},{ok:true,matchedKey:'JH001-001830-1',extracted:'JH001-001830-1',reason:'',bin:'1',time:'x',date:'"+TODAY+"',cap:25}]}],readDate:'"+TODAY+"',dataDate:'"""+TODAY+"""',bin:'1'}))}""")
     pg.reload(); chk("従来データを読める・処置記録のないNGは未処置",pg.inner_text('#ngAndonN')=="1" and pg.evaluate("tally().hit")==1)
-    pg.evaluate("dataDate='2026-11-24';save()")
+    pg.evaluate("dataDate='"+YDAY+"';save()")
     with pg.expect_download() as d: pg.reload()
     prev=pg.evaluate("JSON.parse(localStorage.getItem('hinban_prev_v1'))"); chk("日付切替の退避データに状態を引き継ぐ",prev and prev['files'][0]['results'][0]['ok']==False)
     chk("no page errors",not errs,errs); b.close()
