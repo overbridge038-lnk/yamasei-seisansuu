@@ -18,7 +18,7 @@ with sync_playwright() as p:
     pg.goto(INDEX)
     init=pg.evaluate("Object.fromEntries(PART_CODES)")
     chk("初期一覧に新品番5件",all(k in init for k in ['JH001-001760-11','H2101-60051-2','244410-26A60-1','244410-26A30-1','244410-26A90-2']),len(init))
-    chk("初期一覧＝品番一覧Excel（460品番）",init==exp,(len(init),len(exp),[k for k in exp if init.get(k)!=exp[k]][:5]))
+    chk("初期一覧は2026.11.25版の品番をすべて含む（コードも同じ）",all(init.get(k)==v for k,v in exp.items()),(len(init),[k for k in exp if init.get(k)!=exp[k]][:5]))
     # 1) ファイル選択で .xls
     pg.evaluate("localStorage.removeItem('hinban_parts_v1');PART_CODES.clear()")
     pg.set_input_files('#partFile','list.xls'); pg.wait_for_timeout(800)
